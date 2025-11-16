@@ -1,0 +1,59 @@
+spring:
+  application:
+    name: moneyflow-service
+
+  # Database Configuration
+  datasource:
+    url: jdbc:postgresql://localhost:5432/moneyflow
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+
+  # H2 Console (for development)
+  h2:
+    console:
+      enabled: false
+
+# Server Configuration
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+# JWT Configuration
+jwt:
+  secret: ${JWT_SECRET:bXlTZWNyZXRLZXlGb3JKV1RUb2tlbkdlbmVyYXRpb25UaGF0U2hvdWxkQmVBdExlYXN0MjU2Qml0c0xvbmdBbmRTZWN1cmU=}
+  expiration: 86400000 # 24 hours in milliseconds
+
+# Actuator Configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+
+# OpenAPI Configuration
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: method
+
+# Logging
+logging:
+  level:
+    com.moneyflow: DEBUG
+    org.springframework.security: INFO
