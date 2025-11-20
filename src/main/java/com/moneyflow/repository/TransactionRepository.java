@@ -22,6 +22,9 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     List<Transaction> findByUserIdAndTransactionDateBetweenAndIsActiveTrue(
             Long userId, LocalDate startDate, LocalDate endDate);
 
+    List<Transaction> findByUserIdAndAccountIdAndTransactionDateBetweenAndIsActiveTrue(
+            Long userId, Long accountId, LocalDate startDate, LocalDate endDate);
+
     List<Transaction> findByAccountIdAndIsActiveTrue(Long accountId);
 
     List<Transaction> findByCategoryIdAndIsActiveTrue(Long categoryId);

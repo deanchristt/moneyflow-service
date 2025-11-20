@@ -32,10 +32,18 @@ public class ExportService {
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
     @Transactional(readOnly = true)
-    public byte[] exportTransactionsToCSV(LocalDate startDate, LocalDate endDate) {
+    public byte[] exportTransactionsToCSV(LocalDate startDate, LocalDate endDate, Long accountId) {
         Long userId = SecurityUtils.getCurrentUserId();
-        List<Transaction> transactions = transactionRepository
-                .findByUserIdAndTransactionDateBetweenAndIsActiveTrue(userId, startDate, endDate);
+        List<Transaction> transactions;
+
+        if (accountId != null) {
+            transactions = transactionRepository
+                    .findByUserIdAndAccountIdAndTransactionDateBetweenAndIsActiveTrue(
+                            userId, accountId, startDate, endDate);
+        } else {
+            transactions = transactionRepository
+                    .findByUserIdAndTransactionDateBetweenAndIsActiveTrue(userId, startDate, endDate);
+        }
 
         try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
              CSVWriter csvWriter = new CSVWriter(new OutputStreamWriter(outputStream, StandardCharsets.UTF_8))) {
@@ -70,10 +78,18 @@ public class ExportService {
     }
 
     @Transactional(readOnly = true)
-    public byte[] exportTransactionsToPDF(LocalDate startDate, LocalDate endDate) {
+    public byte[] exportTransactionsToPDF(LocalDate startDate, LocalDate endDate, Long accountId) {
         Long userId = SecurityUtils.getCurrentUserId();
-        List<Transaction> transactions = transactionRepository
-                .findByUserIdAndTransactionDateBetweenAndIsActiveTrue(userId, startDate, endDate);
+        List<Transaction> transactions;
+
+        if (accountId != null) {
+            transactions = transactionRepository
+                    .findByUserIdAndAccountIdAndTransactionDateBetweenAndIsActiveTrue(
+                            userId, accountId, startDate, endDate);
+        } else {
+            transactions = transactionRepository
+                    .findByUserIdAndTransactionDateBetweenAndIsActiveTrue(userId, startDate, endDate);
+        }
 
         try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
             Document document = new Document(PageSize.A4.rotate());
@@ -296,12 +312,12 @@ public class ExportService {
 
     private void addSummaryRow(PdfPTable table, String label, String value, Font labelFont, Font valueFont) {
         PdfPCell labelCell = new PdfPCell(new Phrase(label, labelFont));
-        labelCell.setBorder(Rectangle.NO_BORDER);
+        labelCell.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
         labelCell.setPadding(8);
         table.addCell(labelCell);
 
         PdfPCell valueCell = new PdfPCell(new Phrase(value, valueFont));
-        valueCell.setBorder(Rectangle.NO_BORDER);
+        valueCell.setBorder(com.lowagie.text.Rectangle.NO_BORDER);
         valueCell.setPadding(8);
         valueCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
         table.addCell(valueCell);

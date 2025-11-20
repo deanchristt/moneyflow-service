@@ -25,9 +25,10 @@ public class ExportController {
     @Operation(summary = "Export transactions to CSV")
     public ResponseEntity<byte[]> exportTransactionsToCSV(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) Long accountId) {
 
-        byte[] csvData = exportService.exportTransactionsToCSV(startDate, endDate);
+        byte[] csvData = exportService.exportTransactionsToCSV(startDate, endDate, accountId);
 
         String filename = String.format("transactions_%s_to_%s.csv",
                 startDate.format(DateTimeFormatter.BASIC_ISO_DATE),
@@ -43,9 +44,10 @@ public class ExportController {
     @Operation(summary = "Export transactions to PDF")
     public ResponseEntity<byte[]> exportTransactionsToPDF(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) Long accountId) {
 
-        byte[] pdfData = exportService.exportTransactionsToPDF(startDate, endDate);
+        byte[] pdfData = exportService.exportTransactionsToPDF(startDate, endDate, accountId);
 
         String filename = String.format("transactions_%s_to_%s.pdf",
                 startDate.format(DateTimeFormatter.BASIC_ISO_DATE),
