@@ -7,7 +7,7 @@ import java.math.BigDecimal;
 
 @Entity
 @Table(name = "budgets", uniqueConstraints = {
-        @UniqueConstraint(columnNames = {"user_id", "category_id", "month", "year"})
+        @UniqueConstraint(columnNames = {"user_id", "category_id", "budget_month", "budget_year"})
 })
 @Getter
 @Setter
@@ -27,10 +27,10 @@ public class Budget extends BaseEntity {
     @Column(nullable = false, precision = 19, scale = 4)
     private BigDecimal amount;
 
-    @Column(nullable = false)
+    @Column(name = "budget_month", nullable = false)
     private Integer month;
 
-    @Column(nullable = false)
+    @Column(name = "budget_year", nullable = false)
     private Integer year;
 
     @Column(name = "alert_threshold", precision = 5, scale = 2)
