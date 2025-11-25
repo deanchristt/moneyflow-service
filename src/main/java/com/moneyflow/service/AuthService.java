@@ -45,9 +45,10 @@ public class AuthService {
         dataSeederService.seedDefaultDataForUser(user);
 
         UserPrincipal userPrincipal = UserPrincipal.create(user);
-        String token = jwtService.generateToken(userPrincipal);
+        String accessToken = jwtService.generateToken(userPrincipal);
+        String refreshToken = jwtService.generateRefreshToken(userPrincipal);
 
-        return buildAuthResponse(token, user);
+        return buildAuthResponse(accessToken, refreshToken, user);
     }
 
     public AuthResponse login(LoginRequest request) {
@@ -59,17 +60,39 @@ public class AuthService {
         );
 
         UserPrincipal userPrincipal = (UserPrincipal) authentication.getPrincipal();
-        String token = jwtService.generateToken(userPrincipal);
+        String accessToken = jwtService.generateToken(userPrincipal);
+        String refreshToken = jwtService.generateRefreshToken(userPrincipal);
 
         User user = userRepository.findByEmail(userPrincipal.getEmail())
                 .orElseThrow(() -> new BadRequestException("User not found"));
 
-        return buildAuthResponse(token, user);
+        return buildAuthResponse(accessToken, refreshToken, user);
     }
 
-    private AuthResponse buildAuthResponse(String token, User user) {
+    public AuthResponse refresh(String refreshToken) {
+        if (!jwtService.isRefreshToken(refreshToken)) {
+            throw new BadRequestException("Invalid refresh token");
+        }
+
+        String email = jwtService.extractUsername(refreshToken);
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new BadRequestException("User not found"));
+
+        UserPrincipal userPrincipal = UserPrincipal.create(user);
+        if (!jwtService.isTokenValid(refreshToken, userPrincipal)) {
+            throw new BadRequestException("Refresh token is expired or invalid");
+        }
+
+        String accessToken = jwtService.generateToken(userPrincipal);
+        String newRefreshToken = jwtService.generateRefreshToken(userPrincipal);
+
+        return buildAuthResponse(accessToken, newRefreshToken, user);
+    }
+
+    private AuthResponse buildAuthResponse(String token, String refreshToken, User user) {
         return AuthResponse.builder()
                 .accessToken(token)
+                .refreshToken(refreshToken)
                 .tokenType("Bearer")
                 .expiresIn(jwtService.getExpirationTime())
                 .user(AuthResponse.UserInfo.builder()

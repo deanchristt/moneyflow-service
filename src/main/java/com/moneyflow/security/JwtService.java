@@ -17,11 +17,17 @@ import java.util.function.Function;
 @Service
 public class JwtService {
 
+    private static final String CLAIM_TOKEN_TYPE = "tokenType";
+    private static final String TOKEN_TYPE_REFRESH = "refresh";
+
     @Value("${jwt.secret}")
     private String secretKey;
 
     @Value("${jwt.expiration}")
     private Long jwtExpiration;
+
+    @Value("${jwt.refresh-expiration}")
+    private Long refreshExpiration;
 
     public String extractUsername(String token) {
         return extractClaim(token, Claims::getSubject);
@@ -40,8 +46,23 @@ public class JwtService {
         return buildToken(extraClaims, userDetails, jwtExpiration);
     }
 
+    public String generateRefreshToken(UserDetails userDetails) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put(CLAIM_TOKEN_TYPE, TOKEN_TYPE_REFRESH);
+        return buildToken(claims, userDetails, refreshExpiration);
+    }
+
+    public boolean isRefreshToken(String token) {
+        Object type = extractClaim(token, claims -> claims.get(CLAIM_TOKEN_TYPE));
+        return TOKEN_TYPE_REFRESH.equals(type);
+    }
+
     public Long getExpirationTime() {
         return jwtExpiration;
+    }
+
+    public Long getRefreshExpirationTime() {
+        return refreshExpiration;
     }
 
     private String buildToken(
