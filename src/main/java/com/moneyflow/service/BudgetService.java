@@ -21,7 +21,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.YearMonth;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -46,7 +50,7 @@ public class BudgetService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User", "id", userId));
 
-        Category category = categoryRepository.findById(request.getCategoryId())
+        Category category = categoryRepository.findByIdAndAvailableForUser(request.getCategoryId(), userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Category", "id", request.getCategoryId()));
 
         Budget budget = Budget.builder()
@@ -61,24 +65,34 @@ public class BudgetService {
                 .build();
 
         budget = budgetRepository.save(budget);
-        return mapToResponse(budget);
+        return mapToResponse(budget, computeSpent(budget, userId));
     }
 
     @Transactional(readOnly = true)
     public List<BudgetResponse> getBudgetsByMonthAndYear(Integer month, Integer year) {
         Long userId = SecurityUtils.getCurrentUserId();
-        return budgetRepository.findByUserIdAndMonthAndYearAndIsActiveTrue(userId, month, year)
-                .stream()
-                .map(this::mapToResponse)
-                .collect(Collectors.toList());
+        List<Budget> budgets = budgetRepository.findByUserIdAndMonthAndYearAndIsActiveTrue(userId, month, year);
+        return mapWithBatchedSpent(userId, budgets);
     }
 
     @Transactional(readOnly = true)
     public List<BudgetResponse> getBudgetsByYear(Integer year) {
         Long userId = SecurityUtils.getCurrentUserId();
-        return budgetRepository.findByUserIdAndYearAndIsActiveTrue(userId, year)
-                .stream()
-                .map(this::mapToResponse)
+        List<Budget> budgets = budgetRepository.findByUserIdAndYearAndIsActiveTrue(userId, year);
+        return mapWithBatchedSpent(userId, budgets);
+    }
+
+    /**
+     * Budgets for the current month that have crossed their alert threshold or gone over budget.
+     */
+    @Transactional(readOnly = true)
+    public List<BudgetResponse> getTriggeredBudgets() {
+        Long userId = SecurityUtils.getCurrentUserId();
+        LocalDate now = LocalDate.now();
+        List<Budget> budgets = budgetRepository.findByUserIdAndMonthAndYearAndIsActiveTrue(
+                userId, now.getMonthValue(), now.getYear());
+        return mapWithBatchedSpent(userId, budgets).stream()
+                .filter(b -> Boolean.TRUE.equals(b.getIsAlertTriggered()) || Boolean.TRUE.equals(b.getIsOverBudget()))
                 .collect(Collectors.toList());
     }
 
@@ -87,7 +101,7 @@ public class BudgetService {
         Long userId = SecurityUtils.getCurrentUserId();
         Budget budget = budgetRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Budget", "id", id));
-        return mapToResponse(budget);
+        return mapToResponse(budget, computeSpent(budget, userId));
     }
 
     @Transactional
@@ -106,7 +120,7 @@ public class BudgetService {
         }
 
         budget = budgetRepository.save(budget);
-        return mapToResponse(budget);
+        return mapToResponse(budget, computeSpent(budget, userId));
     }
 
     @Transactional
@@ -121,18 +135,62 @@ public class BudgetService {
         budgetRepository.save(budget);
     }
 
-    private BudgetResponse mapToResponse(Budget budget) {
-        Long userId = SecurityUtils.getCurrentUserId();
-
-        // Calculate date range for the budget period
+    /**
+     * Spent amount for a single budget, counting only the transaction type that
+     * matches the category (e.g. EXPENSE for an expense budget).
+     */
+    private BigDecimal computeSpent(Budget budget, Long userId) {
         LocalDate startDate = LocalDate.of(budget.getYear(), budget.getMonth(), 1);
         LocalDate endDate = startDate.plusMonths(1).minusDays(1);
+        TransactionType type = TransactionType.valueOf(budget.getCategory().getType().name());
+        BigDecimal spent = transactionRepository.sumAmountByCategoryTypeAndDateRange(
+                userId, budget.getCategory().getId(), type, startDate, endDate);
+        return spent != null ? spent : BigDecimal.ZERO;
+    }
 
-        // Get spent amount for this category in this period
-        BigDecimal spent = transactionRepository.sumAmountByCategoryAndDateRange(
-                userId, budget.getCategory().getId(), startDate, endDate);
-        spent = spent != null ? spent : BigDecimal.ZERO;
+    /**
+     * Maps a list of budgets, batching the "spent" aggregation to one query per
+     * distinct period instead of one query per budget (avoids N+1).
+     */
+    private List<BudgetResponse> mapWithBatchedSpent(Long userId, List<Budget> budgets) {
+        Map<YearMonth, List<Budget>> byPeriod = budgets.stream()
+                .collect(Collectors.groupingBy(b -> YearMonth.of(b.getYear(), b.getMonth())));
 
+        List<BudgetResponse> result = new ArrayList<>();
+        for (Map.Entry<YearMonth, List<Budget>> entry : byPeriod.entrySet()) {
+            YearMonth ym = entry.getKey();
+            LocalDate start = ym.atDay(1);
+            LocalDate end = ym.atEndOfMonth();
+            List<Budget> periodBudgets = entry.getValue();
+
+            List<Long> categoryIds = periodBudgets.stream()
+                    .map(b -> b.getCategory().getId())
+                    .distinct()
+                    .collect(Collectors.toList());
+
+            Map<String, BigDecimal> sums = new HashMap<>();
+            for (Object[] row : transactionRepository.sumByCategoriesAndPeriodGrouped(userId, categoryIds, start, end)) {
+                Long categoryId = (Long) row[0];
+                TransactionType type = (TransactionType) row[1];
+                BigDecimal sum = (BigDecimal) row[2];
+                sums.put(spentKey(categoryId, type), sum);
+            }
+
+            for (Budget budget : periodBudgets) {
+                TransactionType type = TransactionType.valueOf(budget.getCategory().getType().name());
+                BigDecimal spent = sums.getOrDefault(
+                        spentKey(budget.getCategory().getId(), type), BigDecimal.ZERO);
+                result.add(mapToResponse(budget, spent));
+            }
+        }
+        return result;
+    }
+
+    private String spentKey(Long categoryId, TransactionType type) {
+        return categoryId + ":" + type.name();
+    }
+
+    private BudgetResponse mapToResponse(Budget budget, BigDecimal spent) {
         BigDecimal remaining = budget.getAmount().subtract(spent);
         BigDecimal percentageUsed = BigDecimal.ZERO;
 
