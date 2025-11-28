@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "budgets", uniqueConstraints = {
@@ -36,4 +37,11 @@ public class Budget extends BaseEntity {
     @Column(name = "alert_threshold", precision = 5, scale = 2)
     @Builder.Default
     private BigDecimal alertThreshold = new BigDecimal("80.00");
+
+    /**
+     * When the budget alert notification was last sent for the current period.
+     * Null means no alert is currently outstanding (allowing a fresh alert to fire).
+     */
+    @Column(name = "alert_sent_at")
+    private LocalDateTime alertSentAt;
 }
