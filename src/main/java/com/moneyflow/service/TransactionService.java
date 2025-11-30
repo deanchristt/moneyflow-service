@@ -35,6 +35,7 @@ public class TransactionService {
     private final AccountRepository accountRepository;
     private final CategoryRepository categoryRepository;
     private final UserRepository userRepository;
+    private final BudgetAlertService budgetAlertService;
 
     @Transactional
     public TransactionResponse createTransaction(CreateTransactionRequest request) {
@@ -46,7 +47,7 @@ public class TransactionService {
         Account account = accountRepository.findByIdAndUserId(request.getAccountId(), userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Account", "id", request.getAccountId()));
 
-        Category category = categoryRepository.findById(request.getCategoryId())
+        Category category = categoryRepository.findByIdAndAvailableForUser(request.getCategoryId(), userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Category", "id", request.getCategoryId()));
 
         // Validate transfer
@@ -84,6 +85,11 @@ public class TransactionService {
         }
 
         transaction = transactionRepository.save(transaction);
+
+        if (transaction.getType() == TransactionType.EXPENSE) {
+            budgetAlertService.evaluateForCategory(userId, category.getId(), transaction.getTransactionDate());
+        }
+
         return mapToResponse(transaction);
     }
 
@@ -127,6 +133,9 @@ public class TransactionService {
         Transaction transaction = transactionRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Transaction", "id", id));
 
+        Long previousCategoryId = transaction.getCategory().getId();
+        LocalDate previousDate = transaction.getTransactionDate();
+
         // If amount changes, adjust account balance
         if (request.getAmount() != null && !request.getAmount().equals(transaction.getAmount())) {
             BigDecimal difference = request.getAmount().subtract(transaction.getAmount());
@@ -150,7 +159,7 @@ public class TransactionService {
         }
 
         if (request.getCategoryId() != null) {
-            Category category = categoryRepository.findById(request.getCategoryId())
+            Category category = categoryRepository.findByIdAndAvailableForUser(request.getCategoryId(), userId)
                     .orElseThrow(() -> new ResourceNotFoundException("Category", "id", request.getCategoryId()));
             transaction.setCategory(category);
         }
@@ -172,6 +181,17 @@ public class TransactionService {
         }
 
         transaction = transactionRepository.save(transaction);
+
+        if (transaction.getType() == TransactionType.EXPENSE) {
+            budgetAlertService.evaluateForCategory(
+                    userId, transaction.getCategory().getId(), transaction.getTransactionDate());
+            // The spending on the previous category/period changed too; re-evaluate it.
+            if (!previousCategoryId.equals(transaction.getCategory().getId())
+                    || !previousDate.equals(transaction.getTransactionDate())) {
+                budgetAlertService.evaluateForCategory(userId, previousCategoryId, previousDate);
+            }
+        }
+
         return mapToResponse(transaction);
     }
 
@@ -195,6 +215,11 @@ public class TransactionService {
         // Soft delete
         transaction.setIsActive(false);
         transactionRepository.save(transaction);
+
+        if (transaction.getType() == TransactionType.EXPENSE) {
+            budgetAlertService.evaluateForCategory(
+                    userId, transaction.getCategory().getId(), transaction.getTransactionDate());
+        }
     }
 
     @Transactional(readOnly = true)
