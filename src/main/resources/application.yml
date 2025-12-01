@@ -11,12 +11,19 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update
+      # Schema is owned by Flyway migrations; Hibernate only validates it matches.
+      ddl-auto: validate
     show-sql: false
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
+
+  # Flyway database migrations (production/PostgreSQL)
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 0
 
   # H2 Console (for development)
   h2:
@@ -31,8 +38,10 @@ server:
 
 # JWT Configuration
 jwt:
-  secret: ${JWT_SECRET:bXlTZWNyZXRLZXlGb3JKV1RUb2tlbkdlbmVyYXRpb25UaGF0U2hvdWxkQmVBdExlYXN0MjU2Qml0c0xvbmdBbmRTZWN1cmU=}
-  expiration: 86400000 # 24 hours in milliseconds
+  # No default: JWT_SECRET (Base64, >= 256-bit) MUST be provided or startup fails.
+  secret: ${JWT_SECRET}
+  expiration: 86400000 # access token: 24 hours in milliseconds
+  refresh-expiration: 604800000 # refresh token: 7 days in milliseconds
 
 # Actuator Configuration
 management:

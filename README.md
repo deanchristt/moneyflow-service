@@ -160,7 +160,7 @@ A comprehensive money flow tracking REST API built with Spring Boot for managing
 |----------|-------------|---------|
 | `DB_USERNAME` | Database username | postgres |
 | `DB_PASSWORD` | Database password | postgres |
-| `JWT_SECRET` | JWT signing key (Base64) | (default dev key) |
+| `JWT_SECRET` | JWT signing key (Base64, ≥256-bit). **Required in production** — startup fails if unset. Dev profile ships its own key. | (none) |
 
 ### Application Properties
 
@@ -273,12 +273,13 @@ RecurringTransaction
 
 ## API Endpoints
 
-### Authentication (2 endpoints)
+### Authentication (3 endpoints)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/v1/auth/register` | Register new user |
-| POST | `/v1/auth/login` | Login user |
+| POST | `/v1/auth/login` | Login user (rate-limited) |
+| POST | `/v1/auth/refresh` | Exchange refresh token for a new access token |
 
 ### Accounts (6 endpoints)
 
@@ -325,13 +326,14 @@ RecurringTransaction
 - `sortBy` - Sort field (default: transactionDate)
 - `sortDirection` - asc/desc (default: desc)
 
-### Budgets (6 endpoints)
+### Budgets (7 endpoints)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/v1/budgets` | Create budget |
 | GET | `/v1/budgets` | Get budgets by month/year |
 | GET | `/v1/budgets/year/{year}` | Get budgets by year |
+| GET | `/v1/budgets/alerts` | Get budgets that triggered an alert this month |
 | GET | `/v1/budgets/{id}` | Get budget by ID |
 | PUT | `/v1/budgets/{id}` | Update budget |
 | DELETE | `/v1/budgets/{id}` | Delete budget |
@@ -377,7 +379,7 @@ RecurringTransaction
 |--------|----------|-------------|
 | GET | `/v1/health` | Health check |
 
-**Total: 41 endpoints**
+**Total: 43 endpoints**
 
 ## Response Format
 
@@ -481,8 +483,11 @@ curl "http://localhost:8080/api/v1/export/monthly-report/pdf?month=1&year=2024" 
 ## Future Enhancements
 
 - [x] Data export (CSV, PDF)
-- [ ] Email notifications for budget alerts
-- [ ] Scheduled job for recurring transactions
+- [x] Budget alert notifications (pluggable senders; logging by default)
+- [x] Scheduled job for recurring transactions (with missed-period catch-up)
+- [x] Refresh tokens
+- [x] Database migrations (Flyway)
+- [ ] Email/push notification channel (add a `NotificationSender` bean)
 - [ ] Team/Family sharing implementation
 - [ ] Currency conversion support
 - [ ] Receipt image upload

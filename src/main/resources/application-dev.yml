@@ -14,10 +14,18 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.H2Dialect
 
+  # Dev uses H2 with Hibernate-managed schema; Flyway is disabled here.
+  flyway:
+    enabled: false
+
   h2:
     console:
       enabled: true
       path: /h2-console
+
+# Dev-only JWT secret (Base64). Production must supply JWT_SECRET via environment.
+jwt:
+  secret: bXlTZWNyZXRLZXlGb3JKV1RUb2tlbkdlbmVyYXRpb25UaGF0U2hvdWxkQmVBdExlYXN0MjU2Qml0c0xvbmdBbmRTZWN1cmU=
 
 logging:
   level:
