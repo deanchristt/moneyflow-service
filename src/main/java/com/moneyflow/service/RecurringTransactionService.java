@@ -6,11 +6,13 @@ import com.moneyflow.model.dto.recurring.CreateRecurringTransactionRequest;
 import com.moneyflow.model.dto.recurring.RecurringTransactionResponse;
 import com.moneyflow.model.dto.recurring.UpdateRecurringTransactionRequest;
 import com.moneyflow.model.entity.*;
+import com.moneyflow.model.enums.AccountType;
 import com.moneyflow.model.enums.TransactionType;
 import com.moneyflow.repository.*;
 import com.moneyflow.security.SecurityUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,6 +33,9 @@ public class RecurringTransactionService {
     private final CategoryRepository categoryRepository;
     private final UserRepository userRepository;
     private final BudgetAlertService budgetAlertService;
+
+    @Value("${moneyflow.accounts.enforce-sufficient-balance:false}")
+    private boolean enforceSufficientBalance;
 
     @Transactional
     public RecurringTransactionResponse createRecurringTransaction(CreateRecurringTransactionRequest request) {
@@ -74,6 +79,14 @@ public class RecurringTransactionService {
                 .stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public org.springframework.data.domain.Page<RecurringTransactionResponse> getAllRecurringTransactions(
+            org.springframework.data.domain.Pageable pageable) {
+        Long userId = SecurityUtils.getCurrentUserId();
+        return recurringTransactionRepository.findByUserIdAndIsActiveTrue(userId, pageable)
+                .map(this::mapToResponse);
     }
 
     @Transactional(readOnly = true)
@@ -246,10 +259,14 @@ public class RecurringTransactionService {
                 .recurringTransaction(recurring)
                 .build();
 
-        // Update account balance
+        // Update account balance (guard non-credit accounts against overdraft)
         if (recurring.getType() == TransactionType.INCOME) {
             account.setBalance(account.getBalance().add(recurring.getAmount()));
         } else if (recurring.getType() == TransactionType.EXPENSE) {
+            if (enforceSufficientBalance && account.getType() != AccountType.CREDIT_CARD
+                    && account.getBalance().subtract(recurring.getAmount()).compareTo(BigDecimal.ZERO) < 0) {
+                throw new BadRequestException("Insufficient balance in account '" + account.getName() + "'");
+            }
             account.setBalance(account.getBalance().subtract(recurring.getAmount()));
         }
 

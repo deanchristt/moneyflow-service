@@ -1,6 +1,8 @@
 package com.moneyflow.repository;
 
 import com.moneyflow.model.entity.RecurringTransaction;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -14,6 +16,8 @@ import java.util.Optional;
 public interface RecurringTransactionRepository extends JpaRepository<RecurringTransaction, Long> {
 
     List<RecurringTransaction> findByUserIdAndIsActiveTrue(Long userId);
+
+    Page<RecurringTransaction> findByUserIdAndIsActiveTrue(Long userId, Pageable pageable);
 
     Optional<RecurringTransaction> findByIdAndUserId(Long id, Long userId);
 
