@@ -4,6 +4,9 @@ import com.moneyflow.model.dto.CreateTeamRequest;
 import com.moneyflow.model.dto.InviteMemberRequest;
 import com.moneyflow.model.dto.TeamDTO;
 import com.moneyflow.model.dto.TeamMemberDTO;
+import com.moneyflow.exception.BadRequestException;
+import com.moneyflow.exception.ResourceNotFoundException;
+import com.moneyflow.exception.UnauthorizedException;
 import com.moneyflow.model.entity.Team;
 import com.moneyflow.model.entity.TeamMember;
 import com.moneyflow.model.entity.User;
@@ -48,11 +51,11 @@ public class TeamService {
     public TeamDTO createTeam(CreateTeamRequest request) {
         Long userId = SecurityUtils.getCurrentUserId();
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("User", "id", userId));
 
         // Check if user already has a team
         if (!teamMemberRepository.findByUserId(userId).isEmpty()) {
-            throw new RuntimeException("User already belongs to a team");
+            throw new BadRequestException("User already belongs to a team");
         }
 
         // Generate unique invite code
@@ -87,10 +90,10 @@ public class TeamService {
 
         // Only owner or admin can update team
         TeamMember member = teamMemberRepository.findByTeamIdAndUserId(team.getId(), userId)
-                .orElseThrow(() -> new RuntimeException("Not a team member"));
+                .orElseThrow(() -> new UnauthorizedException("Not a team member"));
 
         if (member.getRole() != TeamRole.OWNER && member.getRole() != TeamRole.ADMIN) {
-            throw new RuntimeException("Only owner or admin can update team");
+            throw new UnauthorizedException("Only owner or admin can update team");
         }
 
         team.setName(request.getName());
@@ -107,25 +110,25 @@ public class TeamService {
 
         // Only owner or admin can invite
         TeamMember inviter = teamMemberRepository.findByTeamIdAndUserId(team.getId(), userId)
-                .orElseThrow(() -> new RuntimeException("Not a team member"));
+                .orElseThrow(() -> new UnauthorizedException("Not a team member"));
 
         if (inviter.getRole() != TeamRole.OWNER && inviter.getRole() != TeamRole.ADMIN) {
-            throw new RuntimeException("Only owner or admin can invite members");
+            throw new UnauthorizedException("Only owner or admin can invite members");
         }
 
         // Find user by email
         User newUser = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new RuntimeException("User with email " + request.getEmail() + " not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("User", "email", request.getEmail()));
 
         // Check if user is already a member
         if (teamMemberRepository.existsByTeamIdAndUserId(team.getId(), newUser.getId())) {
-            throw new RuntimeException("User is already a team member");
+            throw new BadRequestException("User is already a team member");
         }
 
         // Cannot make another user OWNER
         TeamRole role = request.getRole();
         if (role == TeamRole.OWNER) {
-            throw new RuntimeException("Cannot invite member with OWNER role");
+            throw new BadRequestException("Cannot invite member with OWNER role");
         }
 
         // Create team member
@@ -147,26 +150,26 @@ public class TeamService {
 
         // Get current user member
         TeamMember currentMember = teamMemberRepository.findByTeamIdAndUserId(team.getId(), userId)
-                .orElseThrow(() -> new RuntimeException("Not a team member"));
+                .orElseThrow(() -> new UnauthorizedException("Not a team member"));
 
         // Only owner or admin can remove members
         if (currentMember.getRole() != TeamRole.OWNER && currentMember.getRole() != TeamRole.ADMIN) {
-            throw new RuntimeException("Only owner or admin can remove members");
+            throw new UnauthorizedException("Only owner or admin can remove members");
         }
 
         // Get member to remove
         TeamMember memberToRemove = teamMemberRepository.findByTeamIdAndUserId(team.getId(), memberUserId)
-                .orElseThrow(() -> new RuntimeException("Member not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Member", "userId", memberUserId));
 
         // Cannot remove owner
         if (memberToRemove.getRole() == TeamRole.OWNER) {
-            throw new RuntimeException("Cannot remove team owner");
+            throw new BadRequestException("Cannot remove team owner");
         }
 
         // Admin cannot remove other admins or owner
         if (currentMember.getRole() == TeamRole.ADMIN &&
                 (memberToRemove.getRole() == TeamRole.ADMIN || memberToRemove.getRole() == TeamRole.OWNER)) {
-            throw new RuntimeException("Admin cannot remove other admins or owner");
+            throw new UnauthorizedException("Admin cannot remove other admins or owner");
         }
 
         teamMemberRepository.delete(memberToRemove);
@@ -179,19 +182,19 @@ public class TeamService {
 
         // Only owner can change roles
         TeamMember currentMember = teamMemberRepository.findByTeamIdAndUserId(team.getId(), userId)
-                .orElseThrow(() -> new RuntimeException("Not a team member"));
+                .orElseThrow(() -> new UnauthorizedException("Not a team member"));
 
         if (currentMember.getRole() != TeamRole.OWNER) {
-            throw new RuntimeException("Only owner can change member roles");
+            throw new UnauthorizedException("Only owner can change member roles");
         }
 
         // Get member to update
         TeamMember memberToUpdate = teamMemberRepository.findByTeamIdAndUserId(team.getId(), memberUserId)
-                .orElseThrow(() -> new RuntimeException("Member not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Member", "userId", memberUserId));
 
         // Cannot change owner role
         if (memberToUpdate.getRole() == TeamRole.OWNER || newRole == TeamRole.OWNER) {
-            throw new RuntimeException("Cannot change owner role");
+            throw new BadRequestException("Cannot change owner role");
         }
 
         memberToUpdate.setRole(newRole);
@@ -204,7 +207,7 @@ public class TeamService {
         TeamMember member = teamMemberRepository.findByUserId(userId)
                 .stream()
                 .findFirst()
-                .orElseThrow(() -> new RuntimeException("User does not belong to any team"));
+                .orElseThrow(() -> new BadRequestException("User does not belong to any team"));
 
         return member.getTeam();
     }

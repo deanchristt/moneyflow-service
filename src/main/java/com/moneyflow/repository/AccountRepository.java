@@ -20,8 +20,8 @@ public interface AccountRepository extends JpaRepository<Account, Long> {
 
     Optional<Account> findByUserIdAndIsDefaultTrue(Long userId);
 
-    @Query("SELECT a FROM Account a WHERE a.user.id = :userId OR a.team.id IN " +
-            "(SELECT tm.team.id FROM TeamMember tm WHERE tm.user.id = :userId)")
+    @Query("SELECT a FROM Account a WHERE a.isActive = true AND (a.user.id = :userId OR a.team.id IN " +
+            "(SELECT tm.team.id FROM TeamMember tm WHERE tm.user.id = :userId))")
     List<Account> findAllAccessibleByUser(@Param("userId") Long userId);
 
     boolean existsByUserIdAndName(Long userId, String name);
