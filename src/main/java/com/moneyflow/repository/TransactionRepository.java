@@ -33,20 +33,25 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     Optional<Transaction> findByIdAndUserId(Long id, Long userId);
 
     @EntityGraph(attributePaths = {"account", "category", "transferToAccount"})
-    @Query("SELECT t FROM Transaction t WHERE t.user.id = :userId " +
+    @Query("SELECT t FROM Transaction t WHERE t.account.id IN :accountIds " +
             "AND (:accountId IS NULL OR t.account.id = :accountId) " +
             "AND (:categoryId IS NULL OR t.category.id = :categoryId) " +
             "AND (:type IS NULL OR t.type = :type) " +
             "AND (:startDate IS NULL OR t.transactionDate >= :startDate) " +
             "AND (:endDate IS NULL OR t.transactionDate <= :endDate) " +
+            "AND (:search IS NULL OR LOWER(t.description) LIKE LOWER(CONCAT('%', :search, '%')) " +
+            "     OR LOWER(t.note) LIKE LOWER(CONCAT('%', :search, '%'))) " +
+            "AND (:tagId IS NULL OR :tagId IN (SELECT tg.id FROM t.tags tg)) " +
             "AND t.isActive = true")
     Page<Transaction> findByFilters(
-            @Param("userId") Long userId,
+            @Param("accountIds") List<Long> accountIds,
             @Param("accountId") Long accountId,
             @Param("categoryId") Long categoryId,
             @Param("type") TransactionType type,
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate,
+            @Param("search") String search,
+            @Param("tagId") Long tagId,
             Pageable pageable);
 
     @Query("SELECT SUM(t.amount) FROM Transaction t WHERE t.user.id = :userId " +

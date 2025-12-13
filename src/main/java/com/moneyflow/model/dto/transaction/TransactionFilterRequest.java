@@ -19,6 +19,8 @@ public class TransactionFilterRequest {
     private TransactionType type;
     private LocalDate startDate;
     private LocalDate endDate;
+    private String search;
+    private Long tagId;
     private Integer page;
     private Integer size;
     private String sortBy;
