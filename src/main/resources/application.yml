@@ -61,6 +61,27 @@ springdoc:
     path: /swagger-ui.html
     operationsSorter: method
 
+# MoneyFlow app settings
+moneyflow:
+  accounts:
+    # When true, non-credit accounts (cash/bank/e-wallet) cannot be driven below zero.
+    enforce-sufficient-balance: ${ENFORCE_SUFFICIENT_BALANCE:false}
+  notifications:
+    email:
+      # Set to true and configure spring.mail.* (host/username/password) to enable the email channel.
+      enabled: ${MAIL_ENABLED:false}
+      from: ${MAIL_FROM:no-reply@moneyflow.local}
+
+# Mail (only used when moneyflow.notifications.email.enabled=true)
+spring.mail:
+  host: ${MAIL_HOST:}
+  port: ${MAIL_PORT:587}
+  username: ${MAIL_USERNAME:}
+  password: ${MAIL_PASSWORD:}
+  properties:
+    mail.smtp.auth: true
+    mail.smtp.starttls.enable: true
+
 # Logging
 logging:
   level:
