@@ -82,13 +82,20 @@ A comprehensive money flow tracking REST API built with Spring Boot for managing
 
 ### Additional Features
 
+- Savings goals with contribution/withdrawal and progress tracking
+- Transaction tags (many-to-many) with tag-based filtering
+- Team/Family sharing: share accounts with a team; role-based access (OWNER/ADMIN/MEMBER/VIEWER)
+- Full-text transaction search (description/note)
+- Editable transactions (change account/type with automatic balance correction)
+- Optional overdraft guard for non-credit accounts
+- Pluggable notifications (logging by default; opt-in email) + scheduled monthly report
 - Soft delete for all entities (data recovery)
 - Audit trail (created_at, updated_at)
+- Optimistic locking on concurrent balance updates
 - Global exception handling
 - Input validation
 - OpenAPI/Swagger documentation
 - Health check endpoints
-- Team/Family sharing support (entities ready)
 
 ## Tech Stack
 
@@ -161,6 +168,10 @@ A comprehensive money flow tracking REST API built with Spring Boot for managing
 | `DB_USERNAME` | Database username | postgres |
 | `DB_PASSWORD` | Database password | postgres |
 | `JWT_SECRET` | JWT signing key (Base64, ≥256-bit). **Required in production** — startup fails if unset. Dev profile ships its own key. | (none) |
+| `ENFORCE_SUFFICIENT_BALANCE` | Reject expense/transfer that drives a non-credit account below zero | false |
+| `MAIL_ENABLED` | Enable the email notification channel (requires SMTP config) | false |
+| `MAIL_HOST` / `MAIL_PORT` / `MAIL_USERNAME` / `MAIL_PASSWORD` | SMTP settings (used when `MAIL_ENABLED=true`) | (none) / 587 |
+| `MAIL_FROM` | From address for notification emails | no-reply@moneyflow.local |
 
 ### Application Properties
 
@@ -270,6 +281,7 @@ RecurringTransaction
 | CategoryType | INCOME, EXPENSE |
 | Frequency | DAILY, WEEKLY, MONTHLY, YEARLY |
 | TeamRole | OWNER, ADMIN, MEMBER, VIEWER |
+| GoalStatus | ACTIVE, COMPLETED, ARCHIVED |
 
 ## API Endpoints
 
@@ -281,16 +293,18 @@ RecurringTransaction
 | POST | `/v1/auth/login` | Login user (rate-limited) |
 | POST | `/v1/auth/refresh` | Exchange refresh token for a new access token |
 
-### Accounts (6 endpoints)
+### Accounts (8 endpoints)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/v1/accounts` | Create account |
-| GET | `/v1/accounts` | Get all accounts |
+| GET | `/v1/accounts` | Get all accounts (own + team-shared) |
 | GET | `/v1/accounts/{id}` | Get account by ID |
 | PUT | `/v1/accounts/{id}` | Update account |
 | DELETE | `/v1/accounts/{id}` | Delete account |
 | GET | `/v1/accounts/total-balance` | Get total balance |
+| POST | `/v1/accounts/{id}/share` | Share account with your team |
+| POST | `/v1/accounts/{id}/unshare` | Stop sharing account with your team |
 
 ### Categories (6 endpoints)
 
@@ -321,6 +335,8 @@ RecurringTransaction
 - `type` - INCOME, EXPENSE, TRANSFER
 - `startDate` - Start date (yyyy-MM-dd)
 - `endDate` - End date (yyyy-MM-dd)
+- `search` - Free-text match on description/note
+- `tagId` - Filter by tag
 - `page` - Page number (default: 0)
 - `size` - Page size (default: 20)
 - `sortBy` - Sort field (default: transactionDate)
@@ -359,6 +375,46 @@ RecurringTransaction
 | POST | `/v1/recurring-transactions/{id}/resume` | Resume |
 | POST | `/v1/recurring-transactions/{id}/execute` | Execute manually |
 
+Recurring listing is paginated (`page`, `size` query params).
+
+### Savings Goals (7 endpoints)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/v1/savings-goals` | Create a savings goal |
+| GET | `/v1/savings-goals` | Get all savings goals |
+| GET | `/v1/savings-goals/{id}` | Get goal by ID |
+| PUT | `/v1/savings-goals/{id}` | Update a goal |
+| POST | `/v1/savings-goals/{id}/contribute` | Add funds toward a goal |
+| POST | `/v1/savings-goals/{id}/withdraw` | Withdraw funds from a goal |
+| DELETE | `/v1/savings-goals/{id}` | Delete a goal |
+
+Responses include `remaining`, `percentageComplete`, and `isCompleted`.
+
+### Tags (4 endpoints)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/v1/tags` | Create a tag |
+| GET | `/v1/tags` | Get all tags |
+| PUT | `/v1/tags/{id}` | Update a tag |
+| DELETE | `/v1/tags/{id}` | Delete a tag |
+
+Assign tags to a transaction via `tagIds` in the create/update body; filter with `?tagId=`.
+
+### Teams (6 endpoints)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/v1/teams/my-team` | Get the current user's team |
+| POST | `/v1/teams` | Create a team |
+| PUT | `/v1/teams` | Update team (owner/admin) |
+| POST | `/v1/teams/invite` | Invite a member by email (owner/admin) |
+| DELETE | `/v1/teams/members/{userId}` | Remove a member (owner/admin) |
+| PUT | `/v1/teams/members/{userId}/role` | Change a member's role (owner) |
+
+Roles: **VIEWER** = read-only on shared data; **MEMBER** = read/write on accessible accounts; **ADMIN/OWNER** = also manage the team. Accounts (and their transactions) shared with a team are visible to all members.
+
 ### Export (3 endpoints)
 
 | Method | Endpoint | Description |
@@ -379,7 +435,7 @@ RecurringTransaction
 |--------|----------|-------------|
 | GET | `/v1/health` | Health check |
 
-**Total: 43 endpoints**
+**Total: 63 endpoints**
 
 ## Response Format
 
@@ -487,10 +543,14 @@ curl "http://localhost:8080/api/v1/export/monthly-report/pdf?month=1&year=2024" 
 - [x] Scheduled job for recurring transactions (with missed-period catch-up)
 - [x] Refresh tokens
 - [x] Database migrations (Flyway)
-- [ ] Email/push notification channel (add a `NotificationSender` bean)
-- [ ] Team/Family sharing implementation
-- [ ] Currency conversion support
+- [x] Email notification channel (opt-in) + scheduled monthly report
+- [x] Team/Family sharing implementation (shared accounts + role-based access)
+- [x] Savings goals
+- [x] Transaction tags
+- [ ] Currency conversion support (note: total-balance currently sums balances across currencies)
+- [ ] Push notification channel
 - [ ] Receipt image upload
+- [ ] Automated test coverage for new modules
 - [ ] Mobile app API optimizations
 
 ## License
