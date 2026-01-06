@@ -2,6 +2,7 @@ package com.moneyflow.controller;
 
 import com.moneyflow.model.dto.ApiResponse;
 import com.moneyflow.model.dto.account.AccountResponse;
+import com.moneyflow.model.dto.account.BalanceSummaryResponse;
 import com.moneyflow.model.dto.account.CreateAccountRequest;
 import com.moneyflow.model.dto.account.UpdateAccountRequest;
 import com.moneyflow.service.AccountService;
@@ -77,9 +78,15 @@ public class AccountController {
     }
 
     @GetMapping("/total-balance")
-    @Operation(summary = "Get total balance across all accounts")
+    @Operation(summary = "Get total balance across all accounts (converted to the base currency)")
     public ResponseEntity<ApiResponse<BigDecimal>> getTotalBalance() {
         BigDecimal totalBalance = accountService.getTotalBalance();
         return ResponseEntity.ok(ApiResponse.success(totalBalance));
+    }
+
+    @GetMapping("/balance-summary")
+    @Operation(summary = "Get balance per currency plus the converted total")
+    public ResponseEntity<ApiResponse<BalanceSummaryResponse>> getBalanceSummary() {
+        return ResponseEntity.ok(ApiResponse.success(accountService.getBalanceSummary()));
     }
 }

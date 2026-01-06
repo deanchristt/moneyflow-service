@@ -3,6 +3,7 @@ package com.moneyflow.service;
 import com.moneyflow.exception.BadRequestException;
 import com.moneyflow.exception.ResourceNotFoundException;
 import com.moneyflow.model.dto.account.AccountResponse;
+import com.moneyflow.model.dto.account.BalanceSummaryResponse;
 import com.moneyflow.model.dto.account.CreateAccountRequest;
 import com.moneyflow.model.dto.account.UpdateAccountRequest;
 import com.moneyflow.model.entity.Account;
@@ -16,7 +17,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -26,6 +30,7 @@ public class AccountService {
     private final AccountRepository accountRepository;
     private final UserRepository userRepository;
     private final TeamPermissionService teamPermissionService;
+    private final CurrencyService currencyService;
 
     @Transactional
     public AccountResponse createAccount(CreateAccountRequest request) {
@@ -153,10 +158,40 @@ public class AccountService {
     @Transactional(readOnly = true)
     public BigDecimal getTotalBalance() {
         Long userId = SecurityUtils.getCurrentUserId();
+        // Convert each account to the base currency before summing (accounts may differ in currency).
         return accountRepository.findAllAccessibleByUser(userId)
                 .stream()
-                .map(Account::getBalance)
+                .map(a -> currencyService.toBase(a.getBalance(), a.getCurrency()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    @Transactional(readOnly = true)
+    public BalanceSummaryResponse getBalanceSummary() {
+        Long userId = SecurityUtils.getCurrentUserId();
+        List<Account> accounts = accountRepository.findAllAccessibleByUser(userId);
+
+        Map<String, BigDecimal> totalsByCurrency = new LinkedHashMap<>();
+        for (Account a : accounts) {
+            totalsByCurrency.merge(a.getCurrency(), a.getBalance(), BigDecimal::add);
+        }
+
+        List<BalanceSummaryResponse.CurrencyBalance> byCurrency = new ArrayList<>();
+        BigDecimal totalInBase = BigDecimal.ZERO;
+        for (Map.Entry<String, BigDecimal> e : totalsByCurrency.entrySet()) {
+            BigDecimal inBase = currencyService.toBase(e.getValue(), e.getKey());
+            totalInBase = totalInBase.add(inBase);
+            byCurrency.add(BalanceSummaryResponse.CurrencyBalance.builder()
+                    .currency(e.getKey())
+                    .total(e.getValue())
+                    .totalInBase(inBase)
+                    .build());
+        }
+
+        return BalanceSummaryResponse.builder()
+                .baseCurrency(currencyService.getBaseCurrency())
+                .totalInBase(totalInBase)
+                .byCurrency(byCurrency)
+                .build();
     }
 
     private void removeDefaultFromOtherAccounts(Long userId) {
