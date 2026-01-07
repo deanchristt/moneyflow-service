@@ -24,37 +24,26 @@ public class DashboardService {
 
     private final AccountRepository accountRepository;
     private final TransactionRepository transactionRepository;
+    private final TeamPermissionService teamPermissionService;
+    private final CurrencyService currencyService;
 
     @Transactional(readOnly = true)
     public DashboardSummary getDashboardSummary(LocalDate startDate, LocalDate endDate) {
         Long userId = SecurityUtils.getCurrentUserId();
 
-        // Get all accounts
-        List<Account> accounts = accountRepository.findByUserIdAndIsActiveTrue(userId);
+        // Own accounts plus accounts shared with the user's team.
+        List<Account> accounts = accountRepository.findAllAccessibleByUser(userId);
 
-        // Calculate total balance
         BigDecimal totalBalance = accounts.stream()
-                .map(Account::getBalance)
+                .map(a -> currencyService.toBase(a.getBalance(), a.getCurrency()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // Get transactions for the period
-        List<Transaction> transactions = transactionRepository
-                .findByUserIdAndTransactionDateBetweenAndIsActiveTrue(userId, startDate, endDate);
+        List<Transaction> transactions = transactionsFor(accounts, startDate, endDate);
 
-        // Calculate totals
-        BigDecimal totalIncome = transactions.stream()
-                .filter(t -> t.getType() == TransactionType.INCOME)
-                .map(Transaction::getAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        BigDecimal totalExpense = transactions.stream()
-                .filter(t -> t.getType() == TransactionType.EXPENSE)
-                .map(Transaction::getAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
+        BigDecimal totalIncome = sumBase(transactions, TransactionType.INCOME);
+        BigDecimal totalExpense = sumBase(transactions, TransactionType.EXPENSE);
         BigDecimal netFlow = totalIncome.subtract(totalExpense);
 
-        // Account summaries
         List<DashboardSummary.AccountSummary> accountSummaries = accounts.stream()
                 .map(account -> DashboardSummary.AccountSummary.builder()
                         .id(account.getId())
@@ -67,23 +56,16 @@ public class DashboardService {
                         .build())
                 .collect(Collectors.toList());
 
-        // Top expense categories
-        List<DashboardSummary.CategorySummary> topExpenseCategories = getCategorySummaries(
-                transactions, TransactionType.EXPENSE, totalExpense, 5);
-
-        // Top income categories
-        List<DashboardSummary.CategorySummary> topIncomeCategories = getCategorySummaries(
-                transactions, TransactionType.INCOME, totalIncome, 5);
-
         return DashboardSummary.builder()
+                .baseCurrency(currencyService.getBaseCurrency())
                 .totalBalance(totalBalance)
                 .totalIncome(totalIncome)
                 .totalExpense(totalExpense)
                 .netFlow(netFlow)
                 .totalTransactions(transactions.size())
                 .accountSummaries(accountSummaries)
-                .topExpenseCategories(topExpenseCategories)
-                .topIncomeCategories(topIncomeCategories)
+                .topExpenseCategories(getCategorySummaries(transactions, TransactionType.EXPENSE, totalExpense, 5))
+                .topIncomeCategories(getCategorySummaries(transactions, TransactionType.INCOME, totalIncome, 5))
                 .build();
     }
 
@@ -94,30 +76,21 @@ public class DashboardService {
         LocalDate startDate = LocalDate.of(year, month, 1);
         LocalDate endDate = startDate.plusMonths(1).minusDays(1);
 
-        List<Transaction> transactions = transactionRepository
-                .findByUserIdAndTransactionDateBetweenAndIsActiveTrue(userId, startDate, endDate);
+        List<Account> accounts = accountRepository.findAllAccessibleByUser(userId);
+        List<Transaction> transactions = transactionsFor(accounts, startDate, endDate);
 
-        // Calculate totals
-        BigDecimal totalIncome = transactions.stream()
-                .filter(t -> t.getType() == TransactionType.INCOME)
-                .map(Transaction::getAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalIncome = sumBase(transactions, TransactionType.INCOME);
+        BigDecimal totalExpense = sumBase(transactions, TransactionType.EXPENSE);
 
-        BigDecimal totalExpense = transactions.stream()
-                .filter(t -> t.getType() == TransactionType.EXPENSE)
-                .map(Transaction::getAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        // Daily flows
         Map<Integer, BigDecimal> dailyIncome = new HashMap<>();
         Map<Integer, BigDecimal> dailyExpense = new HashMap<>();
-
         for (Transaction transaction : transactions) {
             int day = transaction.getTransactionDate().getDayOfMonth();
+            BigDecimal base = baseAmount(transaction);
             if (transaction.getType() == TransactionType.INCOME) {
-                dailyIncome.merge(day, transaction.getAmount(), BigDecimal::add);
+                dailyIncome.merge(day, base, BigDecimal::add);
             } else if (transaction.getType() == TransactionType.EXPENSE) {
-                dailyExpense.merge(day, transaction.getAmount(), BigDecimal::add);
+                dailyExpense.merge(day, base, BigDecimal::add);
             }
         }
 
@@ -134,23 +107,38 @@ public class DashboardService {
                     .build());
         }
 
-        // Category breakdowns
-        List<MonthlyReport.CategoryBreakdown> expenseBreakdown = getCategoryBreakdown(
-                transactions, TransactionType.EXPENSE, totalExpense);
-
-        List<MonthlyReport.CategoryBreakdown> incomeBreakdown = getCategoryBreakdown(
-                transactions, TransactionType.INCOME, totalIncome);
-
         return MonthlyReport.builder()
                 .month(month)
                 .year(year)
+                .baseCurrency(currencyService.getBaseCurrency())
                 .totalIncome(totalIncome)
                 .totalExpense(totalExpense)
                 .netFlow(totalIncome.subtract(totalExpense))
                 .dailyFlows(dailyFlows)
-                .expenseBreakdown(expenseBreakdown)
-                .incomeBreakdown(incomeBreakdown)
+                .expenseBreakdown(getCategoryBreakdown(transactions, TransactionType.EXPENSE, totalExpense))
+                .incomeBreakdown(getCategoryBreakdown(transactions, TransactionType.INCOME, totalIncome))
                 .build();
+    }
+
+    private List<Transaction> transactionsFor(List<Account> accounts, LocalDate startDate, LocalDate endDate) {
+        List<Long> accountIds = accounts.stream().map(Account::getId).collect(Collectors.toList());
+        if (accountIds.isEmpty()) {
+            return List.of();
+        }
+        return transactionRepository.findByAccountIdInAndTransactionDateBetweenAndIsActiveTrue(
+                accountIds, startDate, endDate);
+    }
+
+    /** Transaction amount converted to the base currency using its account's currency. */
+    private BigDecimal baseAmount(Transaction t) {
+        return currencyService.toBase(t.getAmount(), t.getAccount().getCurrency());
+    }
+
+    private BigDecimal sumBase(List<Transaction> transactions, TransactionType type) {
+        return transactions.stream()
+                .filter(t -> t.getType() == type)
+                .map(this::baseAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     private List<DashboardSummary.CategorySummary> getCategorySummaries(
@@ -160,17 +148,12 @@ public class DashboardService {
                 .filter(t -> t.getType() == type)
                 .collect(Collectors.groupingBy(t -> t.getCategory().getId()));
 
-        return byCategory.entrySet().stream()
-                .map(entry -> {
-                    List<Transaction> categoryTransactions = entry.getValue();
+        return byCategory.values().stream()
+                .map(categoryTransactions -> {
                     Transaction first = categoryTransactions.get(0);
                     BigDecimal amount = categoryTransactions.stream()
-                            .map(Transaction::getAmount)
+                            .map(this::baseAmount)
                             .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-                    BigDecimal percentage = total.compareTo(BigDecimal.ZERO) > 0
-                            ? amount.multiply(new BigDecimal("100")).divide(total, 2, RoundingMode.HALF_UP)
-                            : BigDecimal.ZERO;
 
                     return DashboardSummary.CategorySummary.builder()
                             .id(first.getCategory().getId())
@@ -178,7 +161,7 @@ public class DashboardService {
                             .icon(first.getCategory().getIcon())
                             .color(first.getCategory().getColor())
                             .amount(amount)
-                            .percentage(percentage)
+                            .percentage(percentage(amount, total))
                             .transactionCount(categoryTransactions.size())
                             .build();
                 })
@@ -194,17 +177,12 @@ public class DashboardService {
                 .filter(t -> t.getType() == type)
                 .collect(Collectors.groupingBy(t -> t.getCategory().getId()));
 
-        return byCategory.entrySet().stream()
-                .map(entry -> {
-                    List<Transaction> categoryTransactions = entry.getValue();
+        return byCategory.values().stream()
+                .map(categoryTransactions -> {
                     Transaction first = categoryTransactions.get(0);
                     BigDecimal amount = categoryTransactions.stream()
-                            .map(Transaction::getAmount)
+                            .map(this::baseAmount)
                             .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-                    BigDecimal percentage = total.compareTo(BigDecimal.ZERO) > 0
-                            ? amount.multiply(new BigDecimal("100")).divide(total, 2, RoundingMode.HALF_UP)
-                            : BigDecimal.ZERO;
 
                     return MonthlyReport.CategoryBreakdown.builder()
                             .categoryId(first.getCategory().getId())
@@ -212,10 +190,16 @@ public class DashboardService {
                             .icon(first.getCategory().getIcon())
                             .color(first.getCategory().getColor())
                             .amount(amount)
-                            .percentage(percentage)
+                            .percentage(percentage(amount, total))
                             .build();
                 })
                 .sorted((a, b) -> b.getAmount().compareTo(a.getAmount()))
                 .collect(Collectors.toList());
+    }
+
+    private BigDecimal percentage(BigDecimal amount, BigDecimal total) {
+        return total.compareTo(BigDecimal.ZERO) > 0
+                ? amount.multiply(new BigDecimal("100")).divide(total, 2, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
     }
 }

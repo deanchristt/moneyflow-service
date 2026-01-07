@@ -14,6 +14,7 @@ import java.util.List;
 @AllArgsConstructor
 public class DashboardSummary {
 
+    private String baseCurrency;
     private BigDecimal totalBalance;
     private BigDecimal totalIncome;
     private BigDecimal totalExpense;
