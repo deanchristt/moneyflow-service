@@ -28,6 +28,8 @@ public class BudgetResponse {
     private BigDecimal percentageUsed;
     private Boolean isOverBudget;
     private Boolean isAlertTriggered;
+    private Boolean teamShared;
+    private String baseCurrency;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }
