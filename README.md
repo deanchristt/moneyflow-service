@@ -172,6 +172,7 @@ A comprehensive money flow tracking REST API built with Spring Boot for managing
 | `MAIL_ENABLED` | Enable the email notification channel (requires SMTP config) | false |
 | `MAIL_HOST` / `MAIL_PORT` / `MAIL_USERNAME` / `MAIL_PASSWORD` | SMTP settings (used when `MAIL_ENABLED=true`) | (none) / 587 |
 | `MAIL_FROM` | From address for notification emails | no-reply@moneyflow.local |
+| `CURRENCY_BASE` | Reporting/base currency for converted totals | USD |
 
 ### Application Properties
 
@@ -293,7 +294,7 @@ RecurringTransaction
 | POST | `/v1/auth/login` | Login user (rate-limited) |
 | POST | `/v1/auth/refresh` | Exchange refresh token for a new access token |
 
-### Accounts (8 endpoints)
+### Accounts (9 endpoints)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -302,20 +303,23 @@ RecurringTransaction
 | GET | `/v1/accounts/{id}` | Get account by ID |
 | PUT | `/v1/accounts/{id}` | Update account |
 | DELETE | `/v1/accounts/{id}` | Delete account |
-| GET | `/v1/accounts/total-balance` | Get total balance |
+| GET | `/v1/accounts/total-balance` | Get total balance (converted to base currency) |
+| GET | `/v1/accounts/balance-summary` | Balance per currency + converted total |
 | POST | `/v1/accounts/{id}/share` | Share account with your team |
 | POST | `/v1/accounts/{id}/unshare` | Stop sharing account with your team |
 
-### Categories (6 endpoints)
+### Categories (8 endpoints)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/v1/categories` | Create category |
-| GET | `/v1/categories` | Get all categories |
+| GET | `/v1/categories` | Get all categories (own + default + team) |
 | GET | `/v1/categories/type/{type}` | Get by type |
 | GET | `/v1/categories/{id}` | Get category by ID |
 | PUT | `/v1/categories/{id}` | Update category |
 | DELETE | `/v1/categories/{id}` | Delete category |
+| POST | `/v1/categories/{id}/share` | Share category with your team |
+| POST | `/v1/categories/{id}/unshare` | Stop sharing category with your team |
 
 ### Transactions (7 endpoints)
 
@@ -435,7 +439,11 @@ Roles: **VIEWER** = read-only on shared data; **MEMBER** = read/write on accessi
 |--------|----------|-------------|
 | GET | `/v1/health` | Health check |
 
-**Total: 63 endpoints**
+**Total: 66 endpoints**
+
+> **Multi-currency**: balances and dashboard/report totals are converted to the configured base currency (`moneyflow.currency.base`, default USD) using static rates in `moneyflow.currency.rates`. Dashboard, monthly report, and budget responses include a `baseCurrency` field.
+>
+> **Team aggregation**: the dashboard aggregates over accounts accessible to the user (own + team-shared). A category can be shared with a team, and a **team budget** (`teamShared: true` on create, owner/admin only) aggregates that category's spending across all team members.
 
 ## Response Format
 
@@ -547,7 +555,8 @@ curl "http://localhost:8080/api/v1/export/monthly-report/pdf?month=1&year=2024" 
 - [x] Team/Family sharing implementation (shared accounts + role-based access)
 - [x] Savings goals
 - [x] Transaction tags
-- [ ] Currency conversion support (note: total-balance currently sums balances across currencies)
+- [x] Currency conversion support (static rates; live FX feed is a follow-up)
+- [x] Team budgets & team-aware dashboard
 - [ ] Push notification channel
 - [ ] Receipt image upload
 - [ ] Automated test coverage for new modules
