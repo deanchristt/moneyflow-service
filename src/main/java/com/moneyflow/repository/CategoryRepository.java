@@ -19,13 +19,17 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
 
     List<Category> findByIsDefaultTrueAndIsActiveTrue();
 
-    @Query("SELECT c FROM Category c WHERE (c.user.id = :userId OR c.isDefault = true) AND c.isActive = true")
+    @Query("SELECT c FROM Category c WHERE (c.user.id = :userId OR c.isDefault = true " +
+            "OR c.team.id IN (SELECT tm.team.id FROM TeamMember tm WHERE tm.user.id = :userId)) AND c.isActive = true")
     List<Category> findAllAvailableForUser(@Param("userId") Long userId);
 
-    @Query("SELECT c FROM Category c WHERE (c.user.id = :userId OR c.isDefault = true) AND c.type = :type AND c.isActive = true")
+    @Query("SELECT c FROM Category c WHERE (c.user.id = :userId OR c.isDefault = true " +
+            "OR c.team.id IN (SELECT tm.team.id FROM TeamMember tm WHERE tm.user.id = :userId)) " +
+            "AND c.type = :type AND c.isActive = true")
     List<Category> findAllAvailableForUserByType(@Param("userId") Long userId, @Param("type") CategoryType type);
 
-    @Query("SELECT c FROM Category c WHERE c.id = :id AND (c.user.id = :userId OR c.isDefault = true) AND c.isActive = true")
+    @Query("SELECT c FROM Category c WHERE c.id = :id AND (c.user.id = :userId OR c.isDefault = true " +
+            "OR c.team.id IN (SELECT tm.team.id FROM TeamMember tm WHERE tm.user.id = :userId)) AND c.isActive = true")
     Optional<Category> findByIdAndAvailableForUser(@Param("id") Long id, @Param("userId") Long userId);
 
     boolean existsByUserIdAndName(Long userId, String name);

@@ -6,6 +6,7 @@ import com.moneyflow.model.dto.category.CategoryResponse;
 import com.moneyflow.model.dto.category.CreateCategoryRequest;
 import com.moneyflow.model.dto.category.UpdateCategoryRequest;
 import com.moneyflow.model.entity.Category;
+import com.moneyflow.model.entity.TeamMember;
 import com.moneyflow.model.entity.User;
 import com.moneyflow.model.enums.CategoryType;
 import com.moneyflow.repository.CategoryRepository;
@@ -24,6 +25,7 @@ public class CategoryService {
 
     private final CategoryRepository categoryRepository;
     private final UserRepository userRepository;
+    private final TeamPermissionService teamPermissionService;
 
     @Transactional
     public CategoryResponse createCategory(CreateCategoryRequest request) {
@@ -47,6 +49,35 @@ public class CategoryService {
 
         category = categoryRepository.save(category);
         return mapToResponse(category);
+    }
+
+    @Transactional
+    public CategoryResponse shareCategory(Long id) {
+        Long userId = SecurityUtils.getCurrentUserId();
+        Category category = ownedCategory(id, userId);
+        TeamMember membership = teamPermissionService.membership(userId)
+                .orElseThrow(() -> new BadRequestException("You must belong to a team to share a category"));
+        category.setTeam(membership.getTeam());
+        return mapToResponse(categoryRepository.save(category));
+    }
+
+    @Transactional
+    public CategoryResponse unshareCategory(Long id) {
+        Long userId = SecurityUtils.getCurrentUserId();
+        Category category = ownedCategory(id, userId);
+        category.setTeam(null);
+        return mapToResponse(categoryRepository.save(category));
+    }
+
+    private Category ownedCategory(Long id, Long userId) {
+        Category category = categoryRepository.findById(id)
+                .filter(c -> Boolean.TRUE.equals(c.getIsActive()))
+                .orElseThrow(() -> new ResourceNotFoundException("Category", "id", id));
+        if (category.getIsDefault() || category.getUser() == null
+                || !category.getUser().getId().equals(userId)) {
+            throw new BadRequestException("Only your own categories can be shared");
+        }
+        return category;
     }
 
     @Transactional(readOnly = true)

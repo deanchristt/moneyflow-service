@@ -23,6 +23,10 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     List<Transaction> findByUserIdAndTransactionDateBetweenAndIsActiveTrue(
             Long userId, LocalDate startDate, LocalDate endDate);
 
+    @EntityGraph(attributePaths = {"account", "category"})
+    List<Transaction> findByAccountIdInAndTransactionDateBetweenAndIsActiveTrue(
+            List<Long> accountIds, LocalDate startDate, LocalDate endDate);
+
     List<Transaction> findByUserIdAndAccountIdAndTransactionDateBetweenAndIsActiveTrue(
             Long userId, Long accountId, LocalDate startDate, LocalDate endDate);
 
@@ -78,6 +82,25 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
             "AND t.isActive = true")
     BigDecimal sumAmountByCategoryTypeAndDateRange(
             @Param("userId") Long userId,
+            @Param("categoryId") Long categoryId,
+            @Param("type") TransactionType type,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate);
+
+    @EntityGraph(attributePaths = {"account"})
+    @Query("SELECT t FROM Transaction t WHERE t.user.id = :userId AND t.category.id = :categoryId " +
+            "AND t.type = :type AND t.transactionDate BETWEEN :startDate AND :endDate AND t.isActive = true")
+    List<Transaction> findSpentTransactionsForUser(
+            @Param("userId") Long userId,
+            @Param("categoryId") Long categoryId,
+            @Param("type") TransactionType type,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate);
+
+    @EntityGraph(attributePaths = {"account"})
+    @Query("SELECT t FROM Transaction t WHERE t.category.id = :categoryId " +
+            "AND t.type = :type AND t.transactionDate BETWEEN :startDate AND :endDate AND t.isActive = true")
+    List<Transaction> findSpentTransactionsForCategory(
             @Param("categoryId") Long categoryId,
             @Param("type") TransactionType type,
             @Param("startDate") LocalDate startDate,

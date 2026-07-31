@@ -16,6 +16,7 @@ public class MonthlyReport {
 
     private Integer month;
     private Integer year;
+    private String baseCurrency;
     private BigDecimal totalIncome;
     private BigDecimal totalExpense;
     private BigDecimal netFlow;

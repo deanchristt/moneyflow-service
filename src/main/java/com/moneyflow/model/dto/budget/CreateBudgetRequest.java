@@ -33,4 +33,7 @@ public class CreateBudgetRequest {
     @DecimalMin(value = "0", message = "Alert threshold must be between 0 and 100")
     @DecimalMax(value = "100", message = "Alert threshold must be between 0 and 100")
     private BigDecimal alertThreshold;
+
+    /** When true, create a team budget (requires OWNER/ADMIN and a team-shared category). */
+    private Boolean teamShared;
 }

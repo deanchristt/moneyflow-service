@@ -25,6 +25,10 @@ public class Budget extends BaseEntity {
     @JoinColumn(name = "category_id", nullable = false)
     private Category category;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "team_id")
+    private Team team;
+
     @Column(nullable = false, precision = 19, scale = 4)
     private BigDecimal amount;
 

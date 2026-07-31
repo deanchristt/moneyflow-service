@@ -2,12 +2,16 @@ package com.moneyflow.service;
 
 import com.moneyflow.exception.BadRequestException;
 import com.moneyflow.exception.ResourceNotFoundException;
+import com.moneyflow.exception.UnauthorizedException;
 import com.moneyflow.model.dto.budget.BudgetResponse;
 import com.moneyflow.model.dto.budget.CreateBudgetRequest;
 import com.moneyflow.model.dto.budget.UpdateBudgetRequest;
 import com.moneyflow.model.entity.Budget;
 import com.moneyflow.model.entity.Category;
+import com.moneyflow.model.entity.Team;
+import com.moneyflow.model.entity.Transaction;
 import com.moneyflow.model.entity.User;
+import com.moneyflow.model.enums.TeamRole;
 import com.moneyflow.model.enums.TransactionType;
 import com.moneyflow.repository.BudgetRepository;
 import com.moneyflow.repository.CategoryRepository;
@@ -21,11 +25,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.time.YearMonth;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
@@ -36,12 +37,13 @@ public class BudgetService {
     private final CategoryRepository categoryRepository;
     private final TransactionRepository transactionRepository;
     private final UserRepository userRepository;
+    private final CurrencyService currencyService;
+    private final TeamPermissionService teamPermissionService;
 
     @Transactional
     public BudgetResponse createBudget(CreateBudgetRequest request) {
         Long userId = SecurityUtils.getCurrentUserId();
 
-        // Check if budget already exists for this category/month/year
         if (budgetRepository.existsByUserIdAndCategoryIdAndMonthAndYear(
                 userId, request.getCategoryId(), request.getMonth(), request.getYear())) {
             throw new BadRequestException("Budget already exists for this category and period");
@@ -53,8 +55,21 @@ public class BudgetService {
         Category category = categoryRepository.findByIdAndAvailableForUser(request.getCategoryId(), userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Category", "id", request.getCategoryId()));
 
+        Team team = null;
+        if (Boolean.TRUE.equals(request.getTeamShared())) {
+            TeamRole role = teamPermissionService.role(userId);
+            if (role != TeamRole.OWNER && role != TeamRole.ADMIN) {
+                throw new UnauthorizedException("Only a team owner or admin can create a team budget");
+            }
+            if (category.getTeam() == null) {
+                throw new BadRequestException("Team budgets require a team-shared category");
+            }
+            team = teamPermissionService.membership(userId).orElseThrow().getTeam();
+        }
+
         Budget budget = Budget.builder()
                 .user(user)
+                .team(team)
                 .category(category)
                 .amount(request.getAmount())
                 .month(request.getMonth())
@@ -65,21 +80,23 @@ public class BudgetService {
                 .build();
 
         budget = budgetRepository.save(budget);
-        return mapToResponse(budget, computeSpent(budget, userId));
+        return mapToResponse(budget);
     }
 
     @Transactional(readOnly = true)
     public List<BudgetResponse> getBudgetsByMonthAndYear(Integer month, Integer year) {
         Long userId = SecurityUtils.getCurrentUserId();
-        List<Budget> budgets = budgetRepository.findByUserIdAndMonthAndYearAndIsActiveTrue(userId, month, year);
-        return mapWithBatchedSpent(userId, budgets);
+        return budgetRepository.findVisibleByMonthAndYear(userId, month, year).stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
     public List<BudgetResponse> getBudgetsByYear(Integer year) {
         Long userId = SecurityUtils.getCurrentUserId();
-        List<Budget> budgets = budgetRepository.findByUserIdAndYearAndIsActiveTrue(userId, year);
-        return mapWithBatchedSpent(userId, budgets);
+        return budgetRepository.findVisibleByYear(userId, year).stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
     }
 
     /**
@@ -89,9 +106,8 @@ public class BudgetService {
     public List<BudgetResponse> getTriggeredBudgets() {
         Long userId = SecurityUtils.getCurrentUserId();
         LocalDate now = LocalDate.now();
-        List<Budget> budgets = budgetRepository.findByUserIdAndMonthAndYearAndIsActiveTrue(
-                userId, now.getMonthValue(), now.getYear());
-        return mapWithBatchedSpent(userId, budgets).stream()
+        return budgetRepository.findVisibleByMonthAndYear(userId, now.getMonthValue(), now.getYear()).stream()
+                .map(this::mapToResponse)
                 .filter(b -> Boolean.TRUE.equals(b.getIsAlertTriggered()) || Boolean.TRUE.equals(b.getIsOverBudget()))
                 .collect(Collectors.toList());
     }
@@ -99,9 +115,11 @@ public class BudgetService {
     @Transactional(readOnly = true)
     public BudgetResponse getBudgetById(Long id) {
         Long userId = SecurityUtils.getCurrentUserId();
-        Budget budget = budgetRepository.findByIdAndUserId(id, userId)
+        Budget budget = budgetRepository.findById(id)
+                .filter(b -> Boolean.TRUE.equals(b.getIsActive()))
+                .filter(b -> canView(userId, b))
                 .orElseThrow(() -> new ResourceNotFoundException("Budget", "id", id));
-        return mapToResponse(budget, computeSpent(budget, userId));
+        return mapToResponse(budget);
     }
 
     @Transactional
@@ -114,83 +132,53 @@ public class BudgetService {
         if (request.getAmount() != null) {
             budget.setAmount(request.getAmount());
         }
-
         if (request.getAlertThreshold() != null) {
             budget.setAlertThreshold(request.getAlertThreshold());
         }
 
         budget = budgetRepository.save(budget);
-        return mapToResponse(budget, computeSpent(budget, userId));
+        return mapToResponse(budget);
     }
 
     @Transactional
     public void deleteBudget(Long id) {
         Long userId = SecurityUtils.getCurrentUserId();
-
         Budget budget = budgetRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Budget", "id", id));
-
-        // Soft delete
         budget.setIsActive(false);
         budgetRepository.save(budget);
     }
 
+    private boolean canView(Long userId, Budget budget) {
+        if (budget.getUser().getId().equals(userId)) {
+            return true;
+        }
+        Long teamId = teamPermissionService.teamId(userId);
+        return budget.getTeam() != null && teamId != null && budget.getTeam().getId().equals(teamId);
+    }
+
     /**
-     * Spent amount for a single budget, counting only the transaction type that
-     * matches the category (e.g. EXPENSE for an expense budget).
+     * Spent for a budget, converted to the base currency. Team budgets aggregate the
+     * category's spending across all members; personal budgets only the owner's.
      */
-    private BigDecimal computeSpent(Budget budget, Long userId) {
+    private BigDecimal computeSpent(Budget budget) {
         LocalDate startDate = LocalDate.of(budget.getYear(), budget.getMonth(), 1);
         LocalDate endDate = startDate.plusMonths(1).minusDays(1);
         TransactionType type = TransactionType.valueOf(budget.getCategory().getType().name());
-        BigDecimal spent = transactionRepository.sumAmountByCategoryTypeAndDateRange(
-                userId, budget.getCategory().getId(), type, startDate, endDate);
-        return spent != null ? spent : BigDecimal.ZERO;
+        Long categoryId = budget.getCategory().getId();
+
+        List<Transaction> transactions = budget.getTeam() != null
+                ? transactionRepository.findSpentTransactionsForCategory(categoryId, type, startDate, endDate)
+                : transactionRepository.findSpentTransactionsForUser(
+                        budget.getUser().getId(), categoryId, type, startDate, endDate);
+
+        return transactions.stream()
+                .map(t -> currencyService.toBase(t.getAmount(), t.getAccount().getCurrency()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    /**
-     * Maps a list of budgets, batching the "spent" aggregation to one query per
-     * distinct period instead of one query per budget (avoids N+1).
-     */
-    private List<BudgetResponse> mapWithBatchedSpent(Long userId, List<Budget> budgets) {
-        Map<YearMonth, List<Budget>> byPeriod = budgets.stream()
-                .collect(Collectors.groupingBy(b -> YearMonth.of(b.getYear(), b.getMonth())));
-
-        List<BudgetResponse> result = new ArrayList<>();
-        for (Map.Entry<YearMonth, List<Budget>> entry : byPeriod.entrySet()) {
-            YearMonth ym = entry.getKey();
-            LocalDate start = ym.atDay(1);
-            LocalDate end = ym.atEndOfMonth();
-            List<Budget> periodBudgets = entry.getValue();
-
-            List<Long> categoryIds = periodBudgets.stream()
-                    .map(b -> b.getCategory().getId())
-                    .distinct()
-                    .collect(Collectors.toList());
-
-            Map<String, BigDecimal> sums = new HashMap<>();
-            for (Object[] row : transactionRepository.sumByCategoriesAndPeriodGrouped(userId, categoryIds, start, end)) {
-                Long categoryId = (Long) row[0];
-                TransactionType type = (TransactionType) row[1];
-                BigDecimal sum = (BigDecimal) row[2];
-                sums.put(spentKey(categoryId, type), sum);
-            }
-
-            for (Budget budget : periodBudgets) {
-                TransactionType type = TransactionType.valueOf(budget.getCategory().getType().name());
-                BigDecimal spent = sums.getOrDefault(
-                        spentKey(budget.getCategory().getId(), type), BigDecimal.ZERO);
-                result.add(mapToResponse(budget, spent));
-            }
-        }
-        return result;
-    }
-
-    private String spentKey(Long categoryId, TransactionType type) {
-        return categoryId + ":" + type.name();
-    }
-
-    private BudgetResponse mapToResponse(Budget budget, BigDecimal spent) {
+    private BudgetResponse mapToResponse(Budget budget) {
+        BigDecimal spent = computeSpent(budget);
         BigDecimal remaining = budget.getAmount().subtract(spent);
         BigDecimal percentageUsed = BigDecimal.ZERO;
 
@@ -217,6 +205,8 @@ public class BudgetService {
                 .percentageUsed(percentageUsed)
                 .isOverBudget(isOverBudget)
                 .isAlertTriggered(isAlertTriggered)
+                .teamShared(budget.getTeam() != null)
+                .baseCurrency(currencyService.getBaseCurrency())
                 .createdAt(budget.getCreatedAt())
                 .updatedAt(budget.getUpdatedAt())
                 .build();

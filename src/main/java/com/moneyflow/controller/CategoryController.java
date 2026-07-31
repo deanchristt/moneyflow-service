@@ -71,4 +71,16 @@ public class CategoryController {
         categoryService.deleteCategory(id);
         return ResponseEntity.ok(ApiResponse.success("Category deleted successfully", null));
     }
+
+    @PostMapping("/{id}/share")
+    @Operation(summary = "Share a category with your team")
+    public ResponseEntity<ApiResponse<CategoryResponse>> shareCategory(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success("Category shared with team", categoryService.shareCategory(id)));
+    }
+
+    @PostMapping("/{id}/unshare")
+    @Operation(summary = "Stop sharing a category with your team")
+    public ResponseEntity<ApiResponse<CategoryResponse>> unshareCategory(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success("Category no longer shared", categoryService.unshareCategory(id)));
+    }
 }

@@ -63,6 +63,16 @@ springdoc:
 
 # MoneyFlow app settings
 moneyflow:
+  currency:
+    # Reporting/base currency and static FX rates (value of 1 unit in the base currency).
+    base: ${CURRENCY_BASE:USD}
+    rates:
+      USD: 1
+      EUR: 1.08
+      GBP: 1.27
+      SGD: 0.74
+      IDR: 0.000063
+      JPY: 0.0064
   accounts:
     # When true, non-credit accounts (cash/bank/e-wallet) cannot be driven below zero.
     enforce-sufficient-balance: ${ENFORCE_SUFFICIENT_BALANCE:false}
