@@ -50,6 +50,13 @@ public class BudgetController {
         return ResponseEntity.ok(ApiResponse.success(budgets));
     }
 
+    @GetMapping("/alerts")
+    @Operation(summary = "Get budgets that have triggered an alert this month")
+    public ResponseEntity<ApiResponse<List<BudgetResponse>>> getTriggeredBudgets() {
+        List<BudgetResponse> budgets = budgetService.getTriggeredBudgets();
+        return ResponseEntity.ok(ApiResponse.success(budgets));
+    }
+
     @GetMapping("/{id}")
     @Operation(summary = "Get budget by ID")
     public ResponseEntity<ApiResponse<BudgetResponse>> getBudgetById(@PathVariable Long id) {

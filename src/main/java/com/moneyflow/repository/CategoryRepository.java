@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface CategoryRepository extends JpaRepository<Category, Long> {
@@ -23,6 +24,9 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
 
     @Query("SELECT c FROM Category c WHERE (c.user.id = :userId OR c.isDefault = true) AND c.type = :type AND c.isActive = true")
     List<Category> findAllAvailableForUserByType(@Param("userId") Long userId, @Param("type") CategoryType type);
+
+    @Query("SELECT c FROM Category c WHERE c.id = :id AND (c.user.id = :userId OR c.isDefault = true) AND c.isActive = true")
+    Optional<Category> findByIdAndAvailableForUser(@Param("id") Long id, @Param("userId") Long userId);
 
     boolean existsByUserIdAndName(Long userId, String name);
 }

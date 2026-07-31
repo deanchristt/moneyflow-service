@@ -30,6 +30,7 @@ public class RecurringTransactionService {
     private final AccountRepository accountRepository;
     private final CategoryRepository categoryRepository;
     private final UserRepository userRepository;
+    private final BudgetAlertService budgetAlertService;
 
     @Transactional
     public RecurringTransactionResponse createRecurringTransaction(CreateRecurringTransactionRequest request) {
@@ -41,7 +42,7 @@ public class RecurringTransactionService {
         Account account = accountRepository.findByIdAndUserId(request.getAccountId(), userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Account", "id", request.getAccountId()));
 
-        Category category = categoryRepository.findById(request.getCategoryId())
+        Category category = categoryRepository.findByIdAndAvailableForUser(request.getCategoryId(), userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Category", "id", request.getCategoryId()));
 
         // Transfers not supported for recurring
@@ -100,7 +101,7 @@ public class RecurringTransactionService {
                 .orElseThrow(() -> new ResourceNotFoundException("RecurringTransaction", "id", id));
 
         if (request.getCategoryId() != null) {
-            Category category = categoryRepository.findById(request.getCategoryId())
+            Category category = categoryRepository.findByIdAndAvailableForUser(request.getCategoryId(), userId)
                     .orElseThrow(() -> new ResourceNotFoundException("Category", "id", request.getCategoryId()));
             recurringTransaction.setCategory(category);
         }
@@ -175,11 +176,26 @@ public class RecurringTransactionService {
         RecurringTransaction recurringTransaction = recurringTransactionRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("RecurringTransaction", "id", id));
 
+        if (Boolean.TRUE.equals(recurringTransaction.getIsPaused())) {
+            throw new BadRequestException("Recurring transaction is paused");
+        }
+        if (recurringTransaction.getEndDate() != null
+                && recurringTransaction.getNextExecutionDate().isAfter(recurringTransaction.getEndDate())) {
+            throw new BadRequestException("Recurring transaction has ended");
+        }
+
         createTransactionFromRecurring(recurringTransaction);
     }
 
     /**
-     * Process all due recurring transactions (for scheduled job)
+     * Safety cap on how many missed occurrences a single recurring transaction
+     * may back-fill in one run, to avoid an unbounded loop on bad data.
+     */
+    private static final int MAX_CATCH_UP_PER_RECURRING = 1000;
+
+    /**
+     * Process all due recurring transactions (for scheduled job).
+     * For each due recurring, all missed periods up to today are backfilled.
      */
     @Transactional
     public int processDueRecurringTransactions() {
@@ -189,14 +205,30 @@ public class RecurringTransactionService {
         int count = 0;
         for (RecurringTransaction recurring : dueTransactions) {
             try {
-                createTransactionFromRecurring(recurring);
-                count++;
+                count += catchUpRecurring(recurring, today);
             } catch (Exception e) {
                 log.error("Failed to process recurring transaction {}: {}", recurring.getId(), e.getMessage());
             }
         }
 
         return count;
+    }
+
+    /**
+     * Backfill every occurrence that is due on or before {@code today} and still
+     * within the recurring transaction's end date.
+     */
+    private int catchUpRecurring(RecurringTransaction recurring, LocalDate today) {
+        int executed = 0;
+        while (executed < MAX_CATCH_UP_PER_RECURRING
+                && recurring.getNextExecutionDate() != null
+                && !recurring.getNextExecutionDate().isAfter(today)
+                && (recurring.getEndDate() == null
+                        || !recurring.getNextExecutionDate().isAfter(recurring.getEndDate()))) {
+            createTransactionFromRecurring(recurring);
+            executed++;
+        }
+        return executed;
     }
 
     private void createTransactionFromRecurring(RecurringTransaction recurring) {
@@ -223,6 +255,11 @@ public class RecurringTransactionService {
 
         accountRepository.save(account);
         transactionRepository.save(transaction);
+
+        if (recurring.getType() == TransactionType.EXPENSE) {
+            budgetAlertService.evaluateForCategory(
+                    recurring.getUser().getId(), recurring.getCategory().getId(), transaction.getTransactionDate());
+        }
 
         // Update recurring transaction
         recurring.setLastExecutedAt(LocalDateTime.now());

@@ -4,6 +4,7 @@ import com.moneyflow.model.entity.Transaction;
 import com.moneyflow.model.enums.TransactionType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -31,6 +32,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
 
     Optional<Transaction> findByIdAndUserId(Long id, Long userId);
 
+    @EntityGraph(attributePaths = {"account", "category", "transferToAccount"})
     @Query("SELECT t FROM Transaction t WHERE t.user.id = :userId " +
             "AND (:accountId IS NULL OR t.account.id = :accountId) " +
             "AND (:categoryId IS NULL OR t.category.id = :categoryId) " +
@@ -62,6 +64,27 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
     BigDecimal sumAmountByCategoryAndDateRange(
             @Param("userId") Long userId,
             @Param("categoryId") Long categoryId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate);
+
+    @Query("SELECT SUM(t.amount) FROM Transaction t WHERE t.user.id = :userId " +
+            "AND t.category.id = :categoryId AND t.type = :type " +
+            "AND t.transactionDate BETWEEN :startDate AND :endDate " +
+            "AND t.isActive = true")
+    BigDecimal sumAmountByCategoryTypeAndDateRange(
+            @Param("userId") Long userId,
+            @Param("categoryId") Long categoryId,
+            @Param("type") TransactionType type,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate);
+
+    @Query("SELECT t.category.id, t.type, SUM(t.amount) FROM Transaction t " +
+            "WHERE t.user.id = :userId AND t.category.id IN :categoryIds " +
+            "AND t.transactionDate BETWEEN :startDate AND :endDate AND t.isActive = true " +
+            "GROUP BY t.category.id, t.type")
+    List<Object[]> sumByCategoriesAndPeriodGrouped(
+            @Param("userId") Long userId,
+            @Param("categoryIds") List<Long> categoryIds,
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate);
 }

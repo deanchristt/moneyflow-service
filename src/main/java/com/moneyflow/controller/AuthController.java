@@ -3,6 +3,7 @@ package com.moneyflow.controller;
 import com.moneyflow.model.dto.ApiResponse;
 import com.moneyflow.model.dto.auth.AuthResponse;
 import com.moneyflow.model.dto.auth.LoginRequest;
+import com.moneyflow.model.dto.auth.RefreshTokenRequest;
 import com.moneyflow.model.dto.auth.RegisterRequest;
 import com.moneyflow.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -40,5 +41,13 @@ public class AuthController {
             @Valid @RequestBody LoginRequest request) {
         AuthResponse response = authService.login(request);
         return ResponseEntity.ok(ApiResponse.success("Login successful", response));
+    }
+
+    @PostMapping("/refresh")
+    @Operation(summary = "Exchange a refresh token for a new access token")
+    public ResponseEntity<ApiResponse<AuthResponse>> refresh(
+            @Valid @RequestBody RefreshTokenRequest request) {
+        AuthResponse response = authService.refresh(request.getRefreshToken());
+        return ResponseEntity.ok(ApiResponse.success("Token refreshed", response));
     }
 }
