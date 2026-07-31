@@ -1,5 +1,6 @@
 package com.moneyflow.model.dto.transaction;
 
+import com.moneyflow.model.enums.TransactionType;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
@@ -16,7 +17,13 @@ import java.time.LocalDate;
 @AllArgsConstructor
 public class UpdateTransactionRequest {
 
+    private Long accountId;
+
     private Long categoryId;
+
+    private TransactionType type;
+
+    private Long transferToAccountId;
 
     @Positive(message = "Amount must be positive")
     private BigDecimal amount;
@@ -29,4 +36,6 @@ public class UpdateTransactionRequest {
     private LocalDate transactionDate;
 
     private String referenceNumber;
+
+    private java.util.Set<Long> tagIds;
 }

@@ -46,6 +46,8 @@ public class TransactionController {
             @RequestParam(required = false) TransactionType type,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) Long tagId,
             @RequestParam(defaultValue = "0") Integer page,
             @RequestParam(defaultValue = "20") Integer size,
             @RequestParam(defaultValue = "transactionDate") String sortBy,
@@ -57,6 +59,8 @@ public class TransactionController {
                 .type(type)
                 .startDate(startDate)
                 .endDate(endDate)
+                .search(search)
+                .tagId(tagId)
                 .page(page)
                 .size(size)
                 .sortBy(sortBy)

@@ -9,6 +9,9 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -34,9 +37,12 @@ public class RecurringTransactionController {
     }
 
     @GetMapping
-    @Operation(summary = "Get all recurring transactions")
-    public ResponseEntity<ApiResponse<List<RecurringTransactionResponse>>> getAllRecurringTransactions() {
-        List<RecurringTransactionResponse> transactions = recurringTransactionService.getAllRecurringTransactions();
+    @Operation(summary = "Get all recurring transactions (paginated)")
+    public ResponseEntity<ApiResponse<Page<RecurringTransactionResponse>>> getAllRecurringTransactions(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        Page<RecurringTransactionResponse> transactions = recurringTransactionService.getAllRecurringTransactions(
+                PageRequest.of(page, size, Sort.by("nextExecutionDate").ascending()));
         return ResponseEntity.ok(ApiResponse.success(transactions));
     }
 

@@ -48,6 +48,18 @@ public class AccountController {
         return ResponseEntity.ok(ApiResponse.success(account));
     }
 
+    @PostMapping("/{id}/share")
+    @Operation(summary = "Share an account with your team")
+    public ResponseEntity<ApiResponse<AccountResponse>> shareAccount(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success("Account shared with team", accountService.shareAccount(id)));
+    }
+
+    @PostMapping("/{id}/unshare")
+    @Operation(summary = "Stop sharing an account with your team")
+    public ResponseEntity<ApiResponse<AccountResponse>> unshareAccount(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success("Account no longer shared", accountService.unshareAccount(id)));
+    }
+
     @PutMapping("/{id}")
     @Operation(summary = "Update an account")
     public ResponseEntity<ApiResponse<AccountResponse>> updateAccount(

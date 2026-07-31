@@ -29,4 +29,13 @@ public class NotificationService {
 
         senders.forEach(sender -> sender.send(user.getEmail(), subject, message));
     }
+
+    public void sendMonthlyReport(User user, String periodLabel, BigDecimal income,
+                                  BigDecimal expense, BigDecimal net) {
+        String subject = "Your MoneyFlow report for " + periodLabel;
+        String message = String.format(
+                "Summary for %s — income: %s, expense: %s, net cash flow: %s.",
+                periodLabel, income, expense, net);
+        senders.forEach(sender -> sender.send(user.getEmail(), subject, message));
+    }
 }

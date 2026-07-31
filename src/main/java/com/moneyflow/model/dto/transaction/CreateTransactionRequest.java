@@ -42,4 +42,6 @@ public class CreateTransactionRequest {
 
     // For transfer type only
     private Long transferToAccountId;
+
+    private java.util.Set<Long> tagIds;
 }

@@ -6,6 +6,7 @@ import com.moneyflow.model.dto.account.AccountResponse;
 import com.moneyflow.model.dto.account.CreateAccountRequest;
 import com.moneyflow.model.dto.account.UpdateAccountRequest;
 import com.moneyflow.model.entity.Account;
+import com.moneyflow.model.entity.TeamMember;
 import com.moneyflow.model.entity.User;
 import com.moneyflow.repository.AccountRepository;
 import com.moneyflow.repository.UserRepository;
@@ -24,6 +25,7 @@ public class AccountService {
 
     private final AccountRepository accountRepository;
     private final UserRepository userRepository;
+    private final TeamPermissionService teamPermissionService;
 
     @Transactional
     public AccountResponse createAccount(CreateAccountRequest request) {
@@ -59,7 +61,8 @@ public class AccountService {
     @Transactional(readOnly = true)
     public List<AccountResponse> getAllAccounts() {
         Long userId = SecurityUtils.getCurrentUserId();
-        return accountRepository.findByUserIdAndIsActiveTrue(userId)
+        // Own accounts plus accounts shared with the user's team.
+        return accountRepository.findAllAccessibleByUser(userId)
                 .stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
@@ -68,8 +71,33 @@ public class AccountService {
     @Transactional(readOnly = true)
     public AccountResponse getAccountById(Long id) {
         Long userId = SecurityUtils.getCurrentUserId();
+        Account account = accountRepository.findById(id)
+                .filter(a -> Boolean.TRUE.equals(a.getIsActive()))
+                .filter(a -> teamPermissionService.canAccessAccount(userId, a))
+                .orElseThrow(() -> new ResourceNotFoundException("Account", "id", id));
+        return mapToResponse(account);
+    }
+
+    @Transactional
+    public AccountResponse shareAccount(Long id) {
+        Long userId = SecurityUtils.getCurrentUserId();
         Account account = accountRepository.findByIdAndUserId(id, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Account", "id", id));
+
+        TeamMember membership = teamPermissionService.membership(userId)
+                .orElseThrow(() -> new BadRequestException("You must belong to a team to share an account"));
+        account.setTeam(membership.getTeam());
+        account = accountRepository.save(account);
+        return mapToResponse(account);
+    }
+
+    @Transactional
+    public AccountResponse unshareAccount(Long id) {
+        Long userId = SecurityUtils.getCurrentUserId();
+        Account account = accountRepository.findByIdAndUserId(id, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Account", "id", id));
+        account.setTeam(null);
+        account = accountRepository.save(account);
         return mapToResponse(account);
     }
 
@@ -125,7 +153,7 @@ public class AccountService {
     @Transactional(readOnly = true)
     public BigDecimal getTotalBalance() {
         Long userId = SecurityUtils.getCurrentUserId();
-        return accountRepository.findByUserIdAndIsActiveTrue(userId)
+        return accountRepository.findAllAccessibleByUser(userId)
                 .stream()
                 .map(Account::getBalance)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
